@@ -1,0 +1,11 @@
+[package]
+name = "silica-allocator"
+version = "0.1.0"
+authors = ["ithinuel <ithinuel@gmail.com>"]
+
+[dependencies]
+silica-chunks = { path = "../silica-chunks" }
+
+[dependencies.compiler_builtins]
+git = "https://github.com/japaric/compiler-builtins.git"
+features = ["weak"]
