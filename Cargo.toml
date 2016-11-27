@@ -7,5 +7,6 @@ authors = ["ithinuel <ithinuel@gmail.com>"]
 silica-chunks = { path = "../silica-chunks" }
 
 [dependencies.compiler_builtins]
-git = "https://github.com/japaric/compiler-builtins.git"
-features = ["weak"]
+git = "https://github.com/rust-lang-nursery/compiler-builtins.git"
+
+
