@@ -1,10 +1,8 @@
-#![feature(compiler_builtins_lib)]
 #![feature(allocator)]
 #![allocator]
 #![no_std]
 
 extern crate silica_chunks as chunks;
-extern crate compiler_builtins;
 
 use chunks::*;
 use core::ptr;
@@ -23,15 +21,10 @@ static mut HEAP: Option<Heap<'static >> = Option::None;
 pub fn init()
 {
     unsafe {
-        let a = &heap_start;
-        let b = a as *const usize;
-        let c = b as *mut u8;
+        let start = &heap_start as *const usize as *mut u8;
+        let size = &heap_size as *const usize as usize;
 
-        let d = &heap_size;
-        let e = d as *const usize;
-        let f = e as usize;
-
-        let mut mem: &'static mut [u8] = core::slice::from_raw_parts_mut(c, f);
+        let mut mem: &'static mut [u8] = core::slice::from_raw_parts_mut(start, size);
         HEAP = Some(Heap::new(mem));
     }
 }
