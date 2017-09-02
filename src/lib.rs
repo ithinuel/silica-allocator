@@ -19,7 +19,9 @@ mod block;
 pub use block::{Block};
 
 extern "C" {
+    #[allow(non_upper_case_globals)]
     static heap_start: usize;
+    #[allow(non_upper_case_globals)]
     static heap_size: usize;
 }
 
