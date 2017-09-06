@@ -1,7 +1,7 @@
 #![cfg_attr(not(test), no_std)]
-#![cfg_attr(not(test), feature(alloc))]
+#![cfg_attr(not(test), feature(global_allocator, alloc))]
 #![feature(allocator_api)]
-#![cfg_attr(not(test), feature(global_allocator))]
+#![feature(const_fn)]
 
 #[cfg(not(test))]
 extern crate alloc;
@@ -16,8 +16,10 @@ use std::heap::{Alloc, AllocErr, Layout};
 use std::marker;
 
 mod block;
-pub use block::{Block};
+mod heap;
 
+use heap::Heap;
+/*
 extern "C" {
     #[allow(non_upper_case_globals)]
     static heap_start: usize;
@@ -28,70 +30,52 @@ extern "C" {
 extern {
     fn critical_section_enter();
     fn critical_section_exit();
+}*/
+
+#[derive(Debug)]
+pub struct SafeHeap {
+    inner: Heap
 }
 
-pub struct Heap {
-    first_block: Option<*mut Block>,
-    block_count: usize
-}
+unsafe impl marker::Sync for SafeHeap {}
 
-unsafe impl marker::Sync for Heap {}
-
-unsafe impl<'a> Alloc for &'a Heap {
-    unsafe fn alloc(&mut self, _layout: Layout) -> Result<*mut u8, AllocErr> {
-
-        Ok(0 as *mut u8)
+unsafe impl<'a> Alloc for &'a SafeHeap {
+    unsafe fn alloc(&mut self, layout: Layout) -> Result<*mut u8, AllocErr> {
+        unimplemented!()
     }
     unsafe fn dealloc(&mut self, _ptr: *mut u8, _layout: Layout) {
     }
 }
 
-impl Heap {
-    pub unsafe fn init<'a>() -> Result<(), &'static str> {
-        critical_section_enter();
 
-        if ALLOCATOR.first_block.is_some() {
-            critical_section_exit();
-            return Err("Heap is already initialized.");
-        }
-
-
-        // first make sure we are aligned
-        let mask = Block::alignment() - 1;
-        let start = (heap_start + mask) & !mask;
-        let size = heap_size - (start - heap_start);
-
-        #[test]
-        println!("heap_start={:x} start={:x} size={}", heap_start, start, size);
-
-        let res = Block::init(start as *const u8 as *mut u8,
-                              size);
-
-        #[test]
-        println!("Block::init(start={:x}, size={})={:?}", start, size, res);
-
-        if res.is_err() {
-            critical_section_exit();
-            return Err("Memory initialization failure.");
-        }
-
-        let (block_count, first_block) = res.unwrap();
-        ALLOCATOR.first_block = Some(first_block);
-        ALLOCATOR.block_count = block_count;
-
-        critical_section_exit();
-        Ok(())
-    }
+/// Initializes the heap.
+///
+/// **This must be called prior to any use of dynamically allocated memory.**
+///
+/// # Arguments :
+///
+/// * `heap_start` -  heap start address.
+/// * `heap_size` - heap size.
+/// ```
+///
+pub unsafe fn init<'a>() -> Result<(), &'static str> {
+    unimplemented!()
 }
 
 #[cfg_attr(not(test), global_allocator)]
-static mut ALLOCATOR: Heap = Heap { first_block: None, block_count: 0 };
+pub static mut ALLOCATOR: SafeHeap = SafeHeap { inner: Heap::new() };
+
+/*
+#[cfg(test)]
+extern crate test;
 
 #[cfg(test)]
 pub mod tests {
     use std::vec::Vec;
     use std::mem::forget;
+    use std::heap::{Alloc, AllocErr, Layout};
     use super::{Heap, ALLOCATOR};
+    use test::{Bencher, black_box};
 
     #[no_mangle]
     #[allow(non_upper_case_globals)]
@@ -100,97 +84,77 @@ pub mod tests {
     #[allow(non_upper_case_globals)]
     pub static mut heap_start: usize = 0;
 
+    static mut CRITICAL_SECTION: usize = 0;
     #[no_mangle]
-    pub fn critical_section_enter() {}
+    pub fn critical_section_enter() {
+        unsafe {
+            assert_eq!(0, CRITICAL_SECTION);
+            CRITICAL_SECTION += 1;
+        }
+    }
     #[no_mangle]
-    pub fn critical_section_exit() {}
+    pub fn critical_section_exit() {
+        unsafe {
+            assert_eq!(1, CRITICAL_SECTION);
+            CRITICAL_SECTION -= 1;
+        }
+    }
+
+    /// # Arguments :
+    ///
+    /// * `size -` Heap size to initialize.
+    fn setup(size: usize) -> (Vec<u8>, Heap) {
+        let mut heap = Heap { first_block: None, block_count: 0 };
+//
+//        let mut vec: Vec<u8> = Vec::with_capacity(size + 3);
+//        vec.resize(size + 3, 0);
+//
+//        let start = vec.as_mut_slice().as_mut_ptr() as usize + 3;
+//
+//        assert_eq!(Ok(()), unsafe { heap.init(start, size+3) });
+//        (vec, heap)
+        (Vec::new(), heap)
+    }
+
+    /// # Arguments :
+    ///
+    /// * `cnt -` expected block count.
+    ///
+    fn tear_down(heap: Heap, cnt: usize) {
+    }
 
     #[test]
-    fn test_init() {
-        let size = 2048;
-        unsafe {
-            let mut vec: Vec<u8> = Vec::with_capacity(size);
-            vec.resize(size, 0);
+    fn test_cant_init_if_heap_is_too_small() {
+        // setup ALLOCATOR
 
-            heap_start = vec.as_mut_slice().as_mut_ptr() as usize + 3;
-            heap_size = size;
-            forget(vec);
-        }
-        let res = unsafe { Heap::init() };
-        assert_eq!(Ok(()), res);
-        assert_eq!(1, unsafe { ALLOCATOR.block_count } );
+
+
+        // cleanup ALLOCATOR
     }
-}
 
+    fn add(i: u64) -> u64 {
+        i + i + 1
+    }
+
+    #[bench]
+    #[cfg(bench)]
+    fn bench_random_alloc_and_free(b: &mut Bencher) {
+        b.iter(|| {
+            let n = black_box(100000);
+            let mut i = 0;
+            for _ in 0..n { i = add(i) }
+        });
+    }
+
+    // dealloc
+    // realloc
+    // grow_in_place
+    // shrink_in_place
+    // oom
+
+}
+*/
 /*
-use chunks::Chunk;
-use core::ptr;
-use core::intrinsics::write_bytes;
-
-
-pub enum HeapError {
-    NotEnoughMemory
-}
-
-
-impl Heap {
-    pub fn new<'a>(heap: &'a mut u8) -> Result<Heap, HeapError> {
-        let mut h = Heap {
-            heap: heap.as_ptr(),
-            chunk_count: 0
-        };
-
-        let mut alignment_unit_count = h.heap.len() / Chunk::alignment();
-        if alignment_unit_count < (MIN_PAYLOAD_LEN) {
-            return Err(HeapError::NotEnoughMemory)
-        }
-
-        let mut prev_size = 0;
-        let mut c = h.first_chunk();
-        loop {
-            let size = min(alignment_unit_count, MAX_PAYLOAD_LEN);
-            c.set_prev_size(prev_size);
-            c.set_size(size);
-            c.set_is_allocated(false);
-            c.set_is_last(false);
-
-            h.chunk_count += 1;
-
-            prev_size = size;
-            alignment_unit_count -= size;
-            if alignment_unit_count < MIN_PAYLOAD_LEN {
-                break;
-            }
-
-            c = c.next().unwrap();
-        }
-        c.set_is_last(true);
-
-         h
-    }
-
-    pub fn chunk_count(&self) -> usize {
-        self.chunk_count
-    }
-
-    pub fn first_chunk<'b>(&self) -> &'b mut Chunk {
-        unsafe { &mut *(self.heap as *mut Chunk) }
-    }
-
-    fn find<'b>(&mut self, size: usize) -> Option<&'b mut Chunk> {
-        let mut c = self.first_chunk();
-        while c.size() < size || c.is_allocated() {
-            c = match c.next() {
-                Some(chunk) => chunk,
-                None => return None
-            }
-        }
-
-        Some(c)
-    }
-}
-
-#[unstable(feature = "allocator_api", issue = "32838")]
 unsafe impl Alloc for Heap {
     #[inline]
     unsafe fn alloc(&mut self, layout: Layout) -> Result<*mut u8, AllocErr> {

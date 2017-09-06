@@ -49,13 +49,6 @@ pub struct Block {
 }
 
 impl Block {
-    pub fn new() -> Block {
-        Block {
-            prev_size: 0,
-            size: 0
-        }
-    }
-
     /// Initialize a buffer of raw memory with Block headers.
     /// Returns the number of block initialized or a `BlockError`.
     pub fn init<'a>(heap: *mut u8, size: usize) -> Result<(usize, &'a mut Block), BlockError> {
@@ -93,7 +86,9 @@ impl Block {
 
     /// Align the given usize to the closest bigger alignment point.
     #[inline]
-    pub fn align(size: usize) -> usize { (size + Block::alignment() - MIN_PAYLOAD_LEN) / Block::alignment() }
+    pub fn align(size: usize) -> usize {
+        (size + Block::alignment() - MIN_PAYLOAD_LEN) >> Block::alignment().trailing_zeros()
+    }
 
     #[inline]
     pub fn hdr_csize() -> usize { Block::align(size_of::<Block>()) }
@@ -109,7 +104,7 @@ impl Block {
     #[inline]
     pub fn is_allocated(&self) -> bool { (self.size & FLAG_ALLOCATED) == FLAG_ALLOCATED }
     #[inline]
-    fn set_is_allocated(&mut self, allocated: bool) {
+    pub fn set_is_allocated(&mut self, allocated: bool) {
         if allocated {
             self.size |= FLAG_ALLOCATED;
         } else {
@@ -121,7 +116,7 @@ impl Block {
     pub fn is_last(&self) -> bool { (self.prev_size & FLAG_LAST) == FLAG_LAST }
 
     /// Returns a ptr to the first byte of the payload from this block.
-    pub fn to_ptr<T>(&self) -> *mut T {
+    pub fn as_mut_ptr<T>(&self) -> *mut T {
         unsafe {
             (self as *const Block as *const usize).offset(Block::hdr_csize() as isize) as *mut T
         }
@@ -185,7 +180,7 @@ impl Block {
         // if b1 had data, move them here
         if b1.is_allocated() {
             unsafe {
-                ptr::copy::<usize>(b1.to_ptr(), self.to_ptr(),
+                ptr::copy::<usize>(b1.as_mut_ptr(), self.as_mut_ptr(),
                                    b1.size() * Block::alignment())
             }
         }
