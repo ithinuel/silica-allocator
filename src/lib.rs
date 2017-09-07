@@ -20,7 +20,7 @@ mod heap;
 
 pub use block::Block;
 use heap::Heap;
-/*
+
 extern "C" {
     #[allow(non_upper_case_globals)]
     static heap_start: usize;
@@ -31,7 +31,7 @@ extern "C" {
 extern {
     fn critical_section_enter();
     fn critical_section_exit();
-}*/
+}
 
 #[derive(Debug)]
 pub struct SafeHeap {
@@ -60,8 +60,13 @@ unsafe impl<'a> Alloc for &'a SafeHeap {
 /// * `heap_size` - heap size.
 /// ```
 ///
-pub unsafe fn init<'a>() -> Result<(), &'static str> {
-    unimplemented!()
+pub fn init<'a>() -> Result<(), &'static str> {
+    unsafe {
+        critical_section_enter();
+        let res = ALLOCATOR.inner.init(heap_start, heap_size);
+        critical_section_exit();
+        res
+    }
 }
 
 #[cfg_attr(not(test), global_allocator)]

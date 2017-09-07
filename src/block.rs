@@ -27,10 +27,10 @@ use std::mem::size_of;
 use std::ptr;
 
 /// Defines the minimum block size excluding header in platform's alignment unit.
-pub const MIN_PAYLOAD_LEN: usize = 1;
+pub const MIN_PAYLOAD_SIZE: usize = 1;
 
 /// Defines the maximum block size excluding header in platform's alignment unit.
-pub const MAX_PAYLOAD_LEN: usize = 0x7FFF;
+pub const MAX_PAYLOAD_SIZE: usize = 0x7FFF;
 
 const FLAG_ALLOCATED: u16 = 0x8000;
 const FLAG_LAST: u16 = 0x8000;
@@ -52,9 +52,9 @@ impl Block {
     /// Initialize a buffer of raw memory with Block headers.
     /// Returns the number of block initialized or a `BlockError`.
     pub fn init<'a>(heap: *mut u8, size: usize) -> Result<(usize, &'a mut Block), BlockError> {
-        let mut heap_size = size / Block::alignment();
+        let mut heap_size = size >> Block::alignment().trailing_zeros();
 
-        if heap_size < (Block::hdr_csize() + MIN_PAYLOAD_LEN) {
+        if heap_size < (Block::hdr_csize() + MIN_PAYLOAD_SIZE) {
             return Err(BlockError::NotEnoughMemory)
         }
 
@@ -62,7 +62,7 @@ impl Block {
         let mut prev_size = 0;
         let mut b = unsafe { &mut *(heap as *mut Block) };
         loop {
-            let size = min(heap_size - Block::hdr_csize(), MAX_PAYLOAD_LEN);
+            let size = min(heap_size - Block::hdr_csize(), MAX_PAYLOAD_SIZE);
             b.prev_size = prev_size as u16;
             b.size = size as u16;
 
@@ -70,7 +70,7 @@ impl Block {
 
             prev_size = size;
             heap_size -= Block::hdr_csize() + size;
-            if heap_size < (Block::hdr_csize() + MIN_PAYLOAD_LEN) {
+            if heap_size < (Block::hdr_csize() + MIN_PAYLOAD_SIZE) {
                 break;
             }
 
@@ -87,7 +87,7 @@ impl Block {
     /// Align the given usize to the closest bigger alignment point.
     #[inline]
     pub fn align(size: usize) -> usize {
-        (size + Block::alignment() - MIN_PAYLOAD_LEN) >> Block::alignment().trailing_zeros()
+        (size + Block::alignment() - MIN_PAYLOAD_SIZE) >> Block::alignment().trailing_zeros()
     }
 
     #[inline]
@@ -164,7 +164,7 @@ impl Block {
         }
 
         let new_size = self.size() + Block::hdr_csize() + b1.size();
-        if new_size > MAX_PAYLOAD_LEN {
+        if new_size > MAX_PAYLOAD_SIZE {
             return false
         }
 
@@ -189,7 +189,7 @@ impl Block {
 
     pub fn shrink<'b>(&mut self, csize: usize) -> Option<&'b mut Block> {
         // if we have no room to create a new block return None
-        if (csize < MIN_PAYLOAD_LEN) || (self.size() < (csize + Block::hdr_csize() + MIN_PAYLOAD_LEN)) {
+        if (csize < MIN_PAYLOAD_SIZE) || (self.size() < (csize + Block::hdr_csize() + MIN_PAYLOAD_SIZE)) {
             return None
         }
 
@@ -222,7 +222,7 @@ impl Block {
 #[cfg(test)]
 mod tests {
     use std::vec::Vec;
-    use super::{Block, BlockError, MIN_PAYLOAD_LEN, MAX_PAYLOAD_LEN, FLAG_LAST, FLAG_ALLOCATED};
+    use super::{Block, BlockError, MIN_PAYLOAD_SIZE, MAX_PAYLOAD_SIZE, FLAG_LAST, FLAG_ALLOCATED};
 
     /// defines a work load of a bit more than 10MiB
     const WORK_LOAD: usize = 10*1024*1024+23125;
@@ -240,10 +240,10 @@ mod tests {
     fn check_init(v: &mut Vec<u8>, load_size: usize, expect_err: Option<BlockError>) {
         v.resize(load_size, 0);
         let alignment_items = load_size / Block::alignment();
-        let max_block_size = Block::hdr_csize() + MAX_PAYLOAD_LEN;
+        let max_block_size = Block::hdr_csize() + MAX_PAYLOAD_SIZE;
         let mut count = alignment_items / max_block_size;
 
-        if (alignment_items - (count * max_block_size)) > (Block::hdr_csize() + MIN_PAYLOAD_LEN) {
+        if (alignment_items - (count * max_block_size)) > (Block::hdr_csize() + MIN_PAYLOAD_SIZE) {
             count += 1;
         }
         let result = Block::init((v).as_mut_slice().as_mut_ptr(), load_size);
@@ -259,7 +259,7 @@ mod tests {
     fn test_init() {
         let mut v: Vec<u8> = Vec::with_capacity(Block::hdr_csize()* Block::alignment() - 1);
         check_init(&mut v, 0, Some(BlockError::NotEnoughMemory));
-        check_init(&mut v, Block::hdr_csize() + MAX_PAYLOAD_LEN/2, None);
+        check_init(&mut v, Block::hdr_csize() + MAX_PAYLOAD_SIZE /2, None);
         check_init(&mut v, WORK_LOAD / 2, None);
         check_init(&mut v, WORK_LOAD, None);
     }
@@ -267,13 +267,13 @@ mod tests {
     #[test]
     fn test_to_csize() {
         let mut size = 0;
-        assert_eq!(Block::align(size), (size + Block::alignment() - MIN_PAYLOAD_LEN) / Block::alignment());
+        assert_eq!(Block::align(size), (size + Block::alignment() - MIN_PAYLOAD_SIZE) / Block::alignment());
 
         size = 235;
-        assert_eq!(Block::align(size), (size + Block::alignment() - MIN_PAYLOAD_LEN) / Block::alignment());
+        assert_eq!(Block::align(size), (size + Block::alignment() - MIN_PAYLOAD_SIZE) / Block::alignment());
 
-        size = MAX_PAYLOAD_LEN;
-        assert_eq!(Block::align(size), (size + Block::alignment() - MIN_PAYLOAD_LEN) / Block::alignment());
+        size = MAX_PAYLOAD_SIZE;
+        assert_eq!(Block::align(size), (size + Block::alignment() - MIN_PAYLOAD_SIZE) / Block::alignment());
     }
 
     #[test]
@@ -346,32 +346,32 @@ mod tests {
     #[test]
     fn test_dont_grow_if_the_result_is_too_big() {
         dont_grow_if_the_result_is_too_big(
-            Block::hdr_csize() * 2 + MIN_PAYLOAD_LEN + MAX_PAYLOAD_LEN,
-            MAX_PAYLOAD_LEN,
-            MIN_PAYLOAD_LEN
+            Block::hdr_csize() * 2 + MIN_PAYLOAD_SIZE + MAX_PAYLOAD_SIZE,
+            MAX_PAYLOAD_SIZE,
+            MIN_PAYLOAD_SIZE
         );
         dont_grow_if_the_result_is_too_big(
-            Block::hdr_csize() * 2 + MIN_PAYLOAD_LEN + MAX_PAYLOAD_LEN,
-            MIN_PAYLOAD_LEN,
-            MAX_PAYLOAD_LEN
+            Block::hdr_csize() * 2 + MIN_PAYLOAD_SIZE + MAX_PAYLOAD_SIZE,
+            MIN_PAYLOAD_SIZE,
+            MAX_PAYLOAD_SIZE
         );
         dont_grow_if_the_result_is_too_big(
-            Block::hdr_csize() * 2 + MAX_PAYLOAD_LEN + 1,
-            MAX_PAYLOAD_LEN / 2,
-            MAX_PAYLOAD_LEN / 2 + 1
+            Block::hdr_csize() * 2 + MAX_PAYLOAD_SIZE + 1,
+            MAX_PAYLOAD_SIZE / 2,
+            MAX_PAYLOAD_SIZE / 2 + 1
         );
     }
 
     #[test]
     fn test_dont_grow_if_both_are_allocated() {
         let mut vec = setup((Block::hdr_csize() * 2 +
-            MIN_PAYLOAD_LEN +
-            MIN_PAYLOAD_LEN) * Block::alignment());
+            MIN_PAYLOAD_SIZE +
+            MIN_PAYLOAD_SIZE) * Block::alignment());
         let b0 = first_block(vec.as_mut_slice());
-        b0.size = (MIN_PAYLOAD_LEN as u16) | FLAG_ALLOCATED;
+        b0.size = (MIN_PAYLOAD_SIZE as u16) | FLAG_ALLOCATED;
         let b1 = b0.next().unwrap();
-        b1.size = (MIN_PAYLOAD_LEN as u16) | FLAG_ALLOCATED;
-        b1.prev_size = (MIN_PAYLOAD_LEN as u16) | FLAG_LAST;
+        b1.size = (MIN_PAYLOAD_SIZE as u16) | FLAG_ALLOCATED;
+        b1.prev_size = (MIN_PAYLOAD_SIZE as u16) | FLAG_LAST;
 
         assert_eq!(false, b0.grow());
     }
@@ -379,16 +379,16 @@ mod tests {
     #[test]
     fn test_grow_propagates_last_block_flag() {
         let mut vec = setup((Block::hdr_csize() * 2 +
-            MIN_PAYLOAD_LEN +
-            MIN_PAYLOAD_LEN) * Block::alignment());
+            MIN_PAYLOAD_SIZE +
+            MIN_PAYLOAD_SIZE) * Block::alignment());
         let b0 = first_block(vec.as_mut_slice());
-        b0.size = MIN_PAYLOAD_LEN as u16;
+        b0.size = MIN_PAYLOAD_SIZE as u16;
         let b1 = b0.next().unwrap();
-        b1.size = MIN_PAYLOAD_LEN as u16;
-        b1.prev_size = (MIN_PAYLOAD_LEN as u16) | FLAG_LAST;
+        b1.size = MIN_PAYLOAD_SIZE as u16;
+        b1.prev_size = (MIN_PAYLOAD_SIZE as u16) | FLAG_LAST;
 
         assert_eq!(true, b0.grow());
-        assert_eq!(2*MIN_PAYLOAD_LEN + Block::hdr_csize(), b0.size());
+        assert_eq!(2* MIN_PAYLOAD_SIZE + Block::hdr_csize(), b0.size());
         assert_eq!(true, b0.is_last());
         assert_eq!(false, b0.is_allocated());
     }
@@ -396,28 +396,28 @@ mod tests {
     #[test]
     fn test_grow_propagates_allocated_block_flag() {
         { // propagates from first block
-            let mut vec = setup((Block::hdr_csize() + MIN_PAYLOAD_LEN) * 2 * Block::alignment());
+            let mut vec = setup((Block::hdr_csize() + MIN_PAYLOAD_SIZE) * 2 * Block::alignment());
             let b0 = first_block(vec.as_mut_slice());
-            b0.size = (MIN_PAYLOAD_LEN as u16) | FLAG_ALLOCATED;
+            b0.size = (MIN_PAYLOAD_SIZE as u16) | FLAG_ALLOCATED;
             let b1 = b0.next().unwrap();
-            b1.size = MIN_PAYLOAD_LEN as u16;
-            b1.prev_size = MIN_PAYLOAD_LEN as u16;
+            b1.size = MIN_PAYLOAD_SIZE as u16;
+            b1.prev_size = MIN_PAYLOAD_SIZE as u16;
 
             assert_eq!(true, b0.grow());
-            assert_eq!(2 * MIN_PAYLOAD_LEN + Block::hdr_csize(), b0.size());
+            assert_eq!(2 * MIN_PAYLOAD_SIZE + Block::hdr_csize(), b0.size());
             assert_eq!(false, b0.is_last());
             assert_eq!(true, b0.is_allocated());
         }
         { // propagates from second block
-            let mut vec = setup((Block::hdr_csize() + MIN_PAYLOAD_LEN) * 2 * Block::alignment());
+            let mut vec = setup((Block::hdr_csize() + MIN_PAYLOAD_SIZE) * 2 * Block::alignment());
             let b0 = first_block(vec.as_mut_slice());
-            b0.size = MIN_PAYLOAD_LEN as u16;
+            b0.size = MIN_PAYLOAD_SIZE as u16;
             let b1 = b0.next().unwrap();
-            b1.size = (MIN_PAYLOAD_LEN as u16) | FLAG_ALLOCATED;
-            b1.prev_size = MIN_PAYLOAD_LEN as u16;
+            b1.size = (MIN_PAYLOAD_SIZE as u16) | FLAG_ALLOCATED;
+            b1.prev_size = MIN_PAYLOAD_SIZE as u16;
 
             assert_eq!(true, b0.grow());
-            assert_eq!(2 * MIN_PAYLOAD_LEN + Block::hdr_csize(), b0.size());
+            assert_eq!(2 * MIN_PAYLOAD_SIZE + Block::hdr_csize(), b0.size());
             assert_eq!(false, b0.is_last());
             assert_eq!(true, b0.is_allocated());
         }
@@ -425,13 +425,13 @@ mod tests {
 
     #[test]
     fn test_dont_shrink_if_the_result_is_too_small() {
-        let mut vec = setup((Block::hdr_csize() + MIN_PAYLOAD_LEN) * 2 * Block::alignment());
+        let mut vec = setup((Block::hdr_csize() + MIN_PAYLOAD_SIZE) * 2 * Block::alignment());
         let b0 = first_block(vec.as_mut_slice());
-        b0.size = (Block::hdr_csize() + MIN_PAYLOAD_LEN * 2) as u16;
+        b0.size = (Block::hdr_csize() + MIN_PAYLOAD_SIZE * 2) as u16;
         b0.prev_size = 0 | FLAG_LAST;
 
         assert_eq!(None, b0.shrink(0));
-        assert_eq!(Block::hdr_csize() + MIN_PAYLOAD_LEN * 2, b0.size());
+        assert_eq!(Block::hdr_csize() + MIN_PAYLOAD_SIZE * 2, b0.size());
         assert_eq!(true, b0.is_last());
         assert_eq!(false, b0.is_allocated());
     }
@@ -439,24 +439,24 @@ mod tests {
     #[test]
     fn test_dont_shrink_if_source_is_too_small() {
         { // source is already at MIN_PAYLOAD_LEN
-            let mut vec = setup((Block::hdr_csize() + MIN_PAYLOAD_LEN) * Block::alignment());
+            let mut vec = setup((Block::hdr_csize() + MIN_PAYLOAD_SIZE) * Block::alignment());
             let b0 = first_block(vec.as_mut_slice());
-            b0.size = MIN_PAYLOAD_LEN as u16;
+            b0.size = MIN_PAYLOAD_SIZE as u16;
             b0.prev_size = 0 | FLAG_LAST;
 
-            assert_eq!(None, b0.shrink(MIN_PAYLOAD_LEN));
-            assert_eq!(MIN_PAYLOAD_LEN, b0.size());
+            assert_eq!(None, b0.shrink(MIN_PAYLOAD_SIZE));
+            assert_eq!(MIN_PAYLOAD_SIZE, b0.size());
             assert_eq!(true, b0.is_last());
             assert_eq!(false, b0.is_allocated());
         }
         { // source can not be splitted to another block
-            let mut vec = setup((Block::hdr_csize() + MIN_PAYLOAD_LEN * 2) * Block::alignment());
+            let mut vec = setup((Block::hdr_csize() + MIN_PAYLOAD_SIZE * 2) * Block::alignment());
             let b0 = first_block(vec.as_mut_slice());
-            b0.size = (MIN_PAYLOAD_LEN as u16) * 2;
+            b0.size = (MIN_PAYLOAD_SIZE as u16) * 2;
             b0.prev_size = 0 | FLAG_LAST;
 
-            assert_eq!(None, b0.shrink(MIN_PAYLOAD_LEN));
-            assert_eq!(MIN_PAYLOAD_LEN * 2, b0.size());
+            assert_eq!(None, b0.shrink(MIN_PAYLOAD_SIZE));
+            assert_eq!(MIN_PAYLOAD_SIZE * 2, b0.size());
             assert_eq!(true, b0.is_last());
             assert_eq!(false, b0.is_allocated());
         }
@@ -464,39 +464,39 @@ mod tests {
 
     #[test]
     fn test_shrink_moves_last_flag() {
-        let mut vec = setup((Block::hdr_csize() + MAX_PAYLOAD_LEN) * Block::alignment());
+        let mut vec = setup((Block::hdr_csize() + MAX_PAYLOAD_SIZE) * Block::alignment());
         let b0 = first_block(vec.as_mut_slice());
-        b0.size = MAX_PAYLOAD_LEN as u16;
+        b0.size = MAX_PAYLOAD_SIZE as u16;
         b0.prev_size = 0 | FLAG_LAST;
 
-        let opt_b1 = b0.shrink(MIN_PAYLOAD_LEN);
+        let opt_b1 = b0.shrink(MIN_PAYLOAD_SIZE);
         assert_eq!(true, opt_b1.is_some());
         let b1 = opt_b1.unwrap();
 
-        assert_eq!(MIN_PAYLOAD_LEN, b0.size());
+        assert_eq!(MIN_PAYLOAD_SIZE, b0.size());
         assert_eq!(false, b0.is_last());
         assert_eq!(false, b0.is_allocated());
 
-        assert_eq!(MAX_PAYLOAD_LEN - (MIN_PAYLOAD_LEN + Block::hdr_csize()), b1.size());
+        assert_eq!(MAX_PAYLOAD_SIZE - (MIN_PAYLOAD_SIZE + Block::hdr_csize()), b1.size());
         assert_eq!(true, b1.is_last());
         assert_eq!(false, b1.is_allocated());
     }
     #[test]
     fn test_shrink_keeps_allocated_flag() {
-        let mut vec = setup((Block::hdr_csize() + MAX_PAYLOAD_LEN) * Block::alignment());
+        let mut vec = setup((Block::hdr_csize() + MAX_PAYLOAD_SIZE) * Block::alignment());
         let b0 = first_block(vec.as_mut_slice());
-        b0.size = (MAX_PAYLOAD_LEN as u16) | FLAG_ALLOCATED;
+        b0.size = (MAX_PAYLOAD_SIZE as u16) | FLAG_ALLOCATED;
         b0.prev_size = 0;
 
-        let opt_b1 = b0.shrink(MIN_PAYLOAD_LEN);
+        let opt_b1 = b0.shrink(MIN_PAYLOAD_SIZE);
         assert_eq!(true, opt_b1.is_some());
         let b1 = opt_b1.unwrap();
 
-        assert_eq!(MIN_PAYLOAD_LEN, b0.size());
+        assert_eq!(MIN_PAYLOAD_SIZE, b0.size());
         assert_eq!(false, b0.is_last());
         assert_eq!(true, b0.is_allocated());
 
-        assert_eq!(MAX_PAYLOAD_LEN - (MIN_PAYLOAD_LEN + Block::hdr_csize()), b1.size());
+        assert_eq!(MAX_PAYLOAD_SIZE - (MIN_PAYLOAD_SIZE + Block::hdr_csize()), b1.size());
         assert_eq!(false, b1.is_last());
         assert_eq!(false, b1.is_allocated());
     }
