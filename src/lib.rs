@@ -18,6 +18,7 @@ use std::marker;
 mod block;
 mod heap;
 
+pub use block::Block;
 use heap::Heap;
 /*
 extern "C" {
@@ -40,10 +41,11 @@ pub struct SafeHeap {
 unsafe impl marker::Sync for SafeHeap {}
 
 unsafe impl<'a> Alloc for &'a SafeHeap {
-    unsafe fn alloc(&mut self, layout: Layout) -> Result<*mut u8, AllocErr> {
+    unsafe fn alloc(&mut self, _layout: Layout) -> Result<*mut u8, AllocErr> {
         unimplemented!()
     }
     unsafe fn dealloc(&mut self, _ptr: *mut u8, _layout: Layout) {
+        unimplemented!()
     }
 }
 
