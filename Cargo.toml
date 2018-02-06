@@ -1,6 +1,10 @@
 [package]
-name = "silica-allocator"
+name = "silica-core-allocator"
 version = "0.1.0"
 authors = ["ithinuel <ithinuel@gmail.com>"]
 
+[features]
+huge-blocks = []
+
 [dependencies]
+silica-core-sync = { git = "https://github.com/silica-rs/silica-core-sync.git", branch = "develop" }

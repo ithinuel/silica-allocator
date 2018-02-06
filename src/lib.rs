@@ -1,26 +1,48 @@
 #![cfg_attr(not(test), no_std)]
 #![cfg_attr(not(test), feature(global_allocator, alloc))]
-#![feature(allocator_api)]
-#![feature(const_fn)]
+#![cfg_attr(test, feature(integer_atomics))]
+#![feature(allocator_api, const_fn, unique, use_nested_groups, nll, ptr_internals)]
+
+//! # feature **huge-blocks**
+//! This features allows to allocate blocks bigger than the default
+//! MAX_PAYLOAD_SIZE*Block::alignment() for the cost of bigger block headers.
+
+
+
+
 
 #[cfg(not(test))]
 extern crate alloc;
+extern crate silica_core_sync as sync;
+
 #[cfg(not(test))]
 use alloc::heap::{Alloc, AllocErr, Layout};
 #[cfg(not(test))]
-use core::marker;
+use alloc::vec;
+#[cfg(not(test))]
+use core::ptr;
 
 #[cfg(test)]
 use std::heap::{Alloc, AllocErr, Layout};
 #[cfg(test)]
-use std::marker;
+use std::{ptr, vec};
+
+#[cfg(test)]
+macro_rules! debug {
+    () => (println!("{}:{}", file!(), line!()));
+    ($fmt:expr) => (println!(concat!("{}:{}\t", $fmt), file!(), line!()));
+    ($fmt:expr, $($arg:tt)*) => (println!(concat!("{}:{}\t", $fmt), file!(), line!(), $($arg)*));
+}
 
 mod block;
 mod heap;
 
 pub use block::Block;
-use heap::Heap;
+pub use heap::Heap;
 
+#[cfg(test)]
+pub use heap::tests::{critical_section_enter, critical_section_exit};
+/*
 extern "C" {
     #[allow(non_upper_case_globals)]
     static heap_start: usize;
@@ -28,12 +50,6 @@ extern "C" {
     static heap_size: usize;
 }
 
-extern {
-    fn critical_section_enter();
-    fn critical_section_exit();
-}
-
-#[derive(Debug)]
 pub struct SafeHeap {
     inner: Heap
 }
@@ -48,8 +64,8 @@ unsafe impl<'a> Alloc for &'a SafeHeap {
         unimplemented!()
     }
 }
-
-
+*/
+/*
 /// Initializes the heap.
 ///
 /// **This must be called prior to any use of dynamically allocated memory.**
@@ -58,7 +74,7 @@ unsafe impl<'a> Alloc for &'a SafeHeap {
 ///
 /// * `heap_start` -  heap start address.
 /// * `heap_size` - heap size.
-/// ```
+/// 
 ///
 pub fn init<'a>() -> Result<(), &'static str> {
     unsafe {
@@ -72,7 +88,7 @@ pub fn init<'a>() -> Result<(), &'static str> {
 #[cfg_attr(not(test), global_allocator)]
 pub static mut ALLOCATOR: SafeHeap = SafeHeap { inner: Heap::new() };
 
-/*
+
 #[cfg(test)]
 extern crate test;
 
@@ -143,8 +159,9 @@ pub mod tests {
         i + i + 1
     }
 
-    #[bench]
-    #[cfg(bench)]
+    fn add(i: u64) -> u64 {
+        i + i + 1
+    }
     fn bench_random_alloc_and_free(b: &mut Bencher) {
         b.iter(|| {
             let n = black_box(100000);
@@ -384,7 +401,6 @@ unsafe impl Alloc for Heap {
                 h.absorb_next(c1);
             } else if csize <= (c0_csize + c1_csize) {
                 c1 = opt_c0.unwrap();
-                h.absorb_next(c1);
             } else if csize <= (c0_csize + c1_csize + c2_csize) {
                 h.absorb_next(c1);
                 c1 = opt_c0.unwrap();
